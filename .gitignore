@@ -1,0 +1,24 @@
+# ── Secrets: never commit ─────────────────────────────────────────
+.env
+.env.*
+!.env.example
+# generated from .env, contains the API key + admin PIN
+truth-map-config.js
+# hand-off package + Webflow embed snippet, contain the API key
+handoff/
+
+# ── Dependencies and build output ─────────────────────────────────
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+# NOTE: cdn/ is committed on purpose. jsDelivr serves cdn/truth-map.js from this repo.
+
+# ── Logs and OS / editor files ────────────────────────────────────
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
