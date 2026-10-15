@@ -30,7 +30,7 @@ const assessmentBase = env('DASHBOARD_ASSESSMENT_API_BASE');
 if (assessmentBase) config.endpointBases = { assignmentScores: assessmentBase };
 
 if (!config.apiBase) console.warn('⚠ DASHBOARD_API_BASE is empty in .env, so the dashboard has no data source.');
-if (!config.apiKey) console.warn('⚠ DASHBOARD_API_KEY is empty in .env, so requests will get HTTP 401.');
+if (!config.apiKey) console.log('ℹ DASHBOARD_API_KEY is empty: fine when DASHBOARD_API_BASE is the proxy (proxy/README.md), otherwise requests get HTTP 401.');
 if (!['auto', 'live', 'sample'].includes(config.dataMode)) {
   console.error(`✗ DASHBOARD_DATA_MODE must be auto, live or sample (got "${config.dataMode}")`);
   process.exit(1);

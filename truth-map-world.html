@@ -327,6 +327,13 @@ body.admin #adminbar{display:flex}
 .hd-env{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;word-break:break-all;margin:8px 0;user-select:all}
 .hd-steps{font-size:11px;color:var(--ink2);line-height:1.7;margin:4px 0 0 18px}
 
+/* COHORT RANGE */
+.co-range{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--ink2)}
+.co-range label{display:flex;align-items:center;gap:6px;font-weight:600}
+.co-range input[type=month]{font-family:var(--fc);font-size:11px;padding:4px 7px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--ink)}
+.co-quick{display:flex;gap:2px;background:var(--bg);border:1.5px solid var(--border2);border-radius:6px;padding:2px}
+.co-note{font-size:9.5px;color:var(--ink3)}
+
 /* SETTINGS */
 .cfg-act{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .cfg-btn{padding:6px 14px;border-radius:8px;border:1.5px solid var(--border2);background:var(--bg);font-family:var(--fc);font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer}
@@ -378,7 +385,7 @@ body.admin #adminbar{display:flex}
     <button class="tab" data-tab="risk" onclick="goTab('risk',this)">⑤ Dropout Risk</button>
     <button class="tab" data-tab="interventions" onclick="goTab('interventions',this)">⑥ Interventions</button>
     <button class="tab" data-tab="ontology" onclick="goTab('ontology',this)">⑦ Ontology</button>
-    <button class="tab" data-tab="cohort" onclick="goTab('cohort',this)">⑧ Cohort <span class="soon-tag">soon</span></button>
+    <button class="tab" data-tab="cohort" onclick="goTab('cohort',this)">⑧ Cohort</button>
     <button class="tab" data-tab="assessment" onclick="goTab('assessment',this)">⑨ Assessment</button>
   </div>
   <div class="tr">
@@ -632,14 +639,47 @@ body.admin #adminbar{display:flex}
   </div>
 </div>
 
-<!-- ⑤ COHORT (placeholder) -->
-<div class="view" id="view-cohort" style="overflow-y:auto">
-  <div class="soon"><div class="panel">
-    <h2>Cohort curves — coming soon</h2>
-    <p>Needs completion over time, which the data service doesn't provide yet.</p>
-    <p>Fields needed, per enrolment month:</p>
-    <ul><li>cohortMonth, cohortSize</li><li>monthsSinceEnrolled</li><li>completedByThisMonth</li></ul>
-  </div></div>
+<!-- ⑧ COHORT — /countries/cohort-progress (registration-month cohorts) -->
+<div class="view" id="view-cohort">
+  <div class="gv g2">
+    <div class="panel s2">
+      <div class="pt">Monthly cohorts · <span class="cur-course"></span></div>
+      <div class="ps">Each month = the learners who registered that month, and how far they have got <b>today</b>. Older cohorts have had more time, so compare like with like.</div>
+      <div class="co-range">
+        <label>From <input type="month" id="co-from"></label>
+        <label>To <input type="month" id="co-to"></label>
+        <span class="co-quick"><button class="vt" data-months="3">3 months</button><button class="vt" data-months="6">6 months</button><button class="vt" data-months="12">12 months</button></span>
+        <span class="co-note" id="co-note"></span>
+      </div>
+      <div class="kstrip" id="co-kpis" style="margin-top:12px"></div>
+      <div class="gv-empty" id="co-msg" style="display:none;margin-top:8px"></div>
+    </div>
+    <div class="panel s2">
+      <div class="pt">New learners per month and how they convert</div>
+      <div class="ps">Bars = learners who registered that month. Lines = share of that cohort now enrolled on the course, and share now completed (shown for months with at least 5 new learners).<span class="insight" id="co-main-i"></span></div>
+      <div class="ph h280"><canvas id="co-main"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="pt">Where each cohort is now</div>
+      <div class="ps">Share of each month's learners in each stage today.</div>
+      <div class="ph h240"><canvas id="co-stage"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="pt">Women in each cohort</div>
+      <div class="ps">Female share at registration, enrolment and completion (months with at least 5 new learners). A falling line means women drop out between stages.<span class="insight" id="co-gen-i"></span></div>
+      <div class="ph h240"><canvas id="co-gender"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="pt">New learners by age group</div>
+      <div class="ps">Who joined each month.</div>
+      <div class="ph h240"><canvas id="co-age"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="pt">County × month — new learners and enrolment</div>
+      <div class="ps">Each cell = learners who registered (and the % now enrolled). Darker = higher enrolment. Top 12 counties.</div>
+      <div style="overflow-x:auto"><table class="rtbl heat" id="co-heat"></table></div>
+    </div>
+  </div>
 </div>
 
 <!-- ⑤ DROPOUT RISK -->
@@ -810,11 +850,13 @@ const DEFAULT_CONFIG = {
   timeoutMs:12000,
   // Slow endpoints get longer (Kenya's course-breakdown takes ~15 s server-side)
   timeouts:{courseBreakdown:90000,countyBreakdown:45000},
+  cohortMonths:6,            // default Cohort range: the last N months, including this one
+  cohortMaxMonths:24,        // longest range allowed (large ranges are slow server-side)
   // Browser cache (stale-while-revalidate). Within `fresh` the API isn't called at all;
   // up to `maxAge` the cached copy is shown instantly and refreshed in the background.
   cache:{
     enabled:true,
-    fresh:{countries:5*60e3,courses:30*60e3,countyBreakdown:15*60e3,courseBreakdown:30*60e3,assignmentScores:15*60e3},
+    fresh:{countries:5*60e3,courses:30*60e3,countyBreakdown:15*60e3,courseBreakdown:30*60e3,assignmentScores:15*60e3,cohortProgress:15*60e3},
     maxAge:7*24*3600e3,
   },
   defaultCourse:'OIAI AI Literacy Skills',   // opened first in every country (falls back to the first course)
@@ -831,6 +873,7 @@ const DEFAULT_CONFIG = {
     countyBreakdown:'/countries/county-breakdown',// ?country=&courseId=&groupBy=ageGroup
     courseBreakdown:'/countries/course-breakdown',// ?country=
     assignmentScores:'/countries/assignment-scores',// ?country=&courseId= (&county=)
+    cohortProgress:'/countries/cohort-progress',  // ?country=&courseId=&from=YYYY-MM&to=YYYY-MM
   },
 };
 const CFG_STORE='truthmap.apiConfig';
@@ -985,6 +1028,21 @@ function mockApi(name,params={}){
         ?{county:cn,ageGroups:AGE_ORDER.map(a=>({ageGroup:a,...countStats(cu.filter(u=>u.age===a))}))}
         :{county:cn,...countStats(cu)};
     })};
+  }
+  if(name==='cohortProgress'){
+    const from=q.get('from'),to=q.get('to'),months=[];
+    let [y,m]=from.split('-').map(Number);const [ty,tm]=to.split('-').map(Number);
+    while(y<ty||(y===ty&&m<=tm)){months.push(`${y}-${String(m).padStart(2,'0')}`);m++;if(m>12){m=1;y++;}}
+    const R=seeded('c:'+country+':'+q.get('courseId')+':'+from+to),regions=SAMPLE.regions[canonicalize(country)]||SAMPLE.regions._default;
+    const blank=()=>({registeredUsers:0,registeredFemaleUsers:0,enrolledUsers:0,enrolledFemaleUsers:0,completedUsers:0,completedFemaleUsers:0});
+    const add=(a,b)=>Object.keys(a).forEach(k=>a[k]+=b[k]);
+    const tot=blank();
+    const counties=regions.map(c=>{const ct=blank();return{county:c,totals:ct,months:months.map(mo=>{const mt=blank();
+      const ages=AGE_ORDER.map(ag=>{const reg=Math.floor(R()*4),rf=Math.floor(reg*R()),enr=Math.floor(reg*R()),ef=Math.min(rf,Math.floor(enr*R())),cp=Math.floor(enr*R()),cf=Math.min(ef,Math.floor(cp*R()));
+        const o={registeredUsers:reg,registeredFemaleUsers:rf,enrolledUsers:enr,enrolledFemaleUsers:ef,completedUsers:cp,completedFemaleUsers:cf};add(mt,o);return{ageGroup:ag,...o};});
+      add(ct,mt);return{month:mo,totals:mt,ageGroups:ages};})};});
+    counties.forEach(c=>add(tot,c.totals));
+    return{country,courseId:q.get('courseId')?+q.get('courseId'):null,from,to,totals:tot,counties};
   }
   if(name==='assignmentScores'){
     const R=seeded('a:'+country+':'+q.get('courseId'));
@@ -2894,7 +2952,7 @@ function closeStory(){sIdx=-1;document.getElementById('callout').classList.remov
 // ══════════════════════════════════════════════════════════════
 // TAB SWITCHING (country mode)
 // ══════════════════════════════════════════════════════════════
-const BUILDERS={geo:buildGeo,funnel:buildFunnel,courses:buildCourses,risk:buildRisk,interventions:buildInterventions,ontology:buildOntology,assessment:buildAssessment};
+const BUILDERS={geo:buildGeo,funnel:buildFunnel,courses:buildCourses,risk:buildRisk,interventions:buildInterventions,ontology:buildOntology,assessment:buildAssessment,cohort:buildCohort};
 function goTab(id,btn){
   if(!ADMIN.on&&isHidden('tab:'+id)){
     const first=[...document.querySelectorAll('#tabs .tab')].find(t=>!isHidden('tab:'+t.dataset.tab));
@@ -2930,6 +2988,141 @@ async function doRefresh(force){
 }
 setInterval(()=>doRefresh(false),300_000);   // auto: serves cache, revalidates stale entries
 
+
+// ══════════════════════════════════════════════════════════════
+// COHORT — /countries/cohort-progress. Each month = learners who registered then,
+// with today's enrolled / completed status. Range = from..to months (YYYY-MM).
+// ══════════════════════════════════════════════════════════════
+const ymOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const ymShift=(ym,k)=>{const [y,m]=ym.split('-').map(Number);return ymOf(new Date(y,m-1+k,1));};
+const ymDiff=(a,b)=>{const [ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return (by-ay)*12+(bm-am);};
+const ymLabel=ym=>{const [y,m]=ym.split('-').map(Number);return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].at(m-1)+' '+String(y).slice(2);};
+const COHORT={from:null,to:null};
+function cohortDefaults(k){const to=ymOf(new Date());return{from:ymShift(to,-((k||CFG.cohortMonths||6)-1)),to};}
+function setCohortRange(from,to,{rebuild=true}={}){
+  const cur=ymOf(new Date());
+  if(to>cur) to=cur;
+  if(from>to) [from,to]=[to,from];
+  const max=CFG.cohortMaxMonths||24;
+  let note='';
+  if(ymDiff(from,to)+1>max){from=ymShift(to,-(max-1));note=`Limited to ${max} months.`;}
+  COHORT.from=from;COHORT.to=to;
+  const f=document.getElementById('co-from'),t=document.getElementById('co-to');
+  f.value=from;t.value=to;f.max=cur;t.max=cur;
+  document.getElementById('co-note').textContent=note||`${ymDiff(from,to)+1} months`;
+  document.querySelectorAll('.co-quick .vt').forEach(b=>b.classList.toggle('on',+b.dataset.months===ymDiff(from,to)+1&&to===cur));
+  if(rebuild&&APP.tab==='cohort') buildCohort();
+}
+document.getElementById('co-from').addEventListener('change',e=>e.target.value&&setCohortRange(e.target.value,COHORT.to));
+document.getElementById('co-to').addEventListener('change',e=>e.target.value&&setCohortRange(COHORT.from,e.target.value));
+document.querySelector('.co-quick').addEventListener('click',e=>{const b=e.target.closest('[data-months]');if(!b) return;const d=cohortDefaults(+b.dataset.months);setCohortRange(d.from,d.to);});
+const CO_FIELDS=['registeredUsers','registeredFemaleUsers','enrolledUsers','enrolledFemaleUsers','completedUsers','completedFemaleUsers'];
+const coBlank=()=>Object.fromEntries(CO_FIELDS.map(k=>[k,0]));
+const coAdd=(a,b)=>{CO_FIELDS.forEach(k=>a[k]+=n(b?.[k]));return a;};
+async function buildCohort(){
+  if(!COHORT.from){const d=cohortDefaults();setCohortRange(d.from,d.to,{rebuild:false});}
+  const nav=APP.nav,courseId=APP.courseId,from=COHORT.from,to=COHORT.to;
+  const msg=document.getElementById('co-msg'),kp=document.getElementById('co-kpis');
+  msg.style.display='block';msg.textContent='Loading cohorts…';
+  const direct=rawNames(),via=viaNamesOf(APP.entry);
+  let resps;
+  try{
+    const all=await Promise.allSettled([...direct,...via].map(r=>api('cohortProgress',{country:r,courseId,from,to})));
+    resps=all.map(x=>x.status==='fulfilled'?x.value:null);
+    if(!resps.some(Boolean)) throw (all.find(x=>x.status==='rejected')||{}).reason||new Error('no data');
+  }catch(e){
+    if(nav!==APP.nav||from!==COHORT.from||to!==COHORT.to) return;
+    kp.innerHTML='';
+    ['co-main','co-stage','co-gender','co-age'].forEach(id=>{if(CH[id]){CH[id].destroy();CH[id]=null;}emptyCanvas(id,'No cohort data.');});
+    document.getElementById('co-heat').innerHTML='';
+    msg.textContent=e.status===404&&/cannot get/i.test(String(e.detail||''))?'Cohort data is not available yet.':'Could not load cohorts: '+(e.message||e);
+    return;
+  }
+  if(nav!==APP.nav||courseId!==APP.courseId||from!==COHORT.from||to!==COHORT.to) return;
+
+  const months=[];for(let m=from;m<=to;m=ymShift(m,1)) months.push(m);
+  const cleaner=regionCleaner(APP.entry?.name);
+  const byMonth=Object.fromEntries(months.map(m=>[m,coBlank()]));
+  const byAge={},byCounty=new Map();
+  resps.forEach((r,i)=>{ if(!r) return;
+    const isVia=i>=direct.length;
+    (r.counties||[]).forEach(c=>{
+      const nm=cleaner.clean(c.county);
+      if(isVia&&(nm===UNSPECIFIED||nm==='Unknown'||!cleaner.match(c.county))) return;   // borrowed rows: only our counties
+      if(!byCounty.has(nm)) byCounty.set(nm,{name:nm,total:coBlank(),months:Object.fromEntries(months.map(m=>[m,coBlank()]))});
+      const bc=byCounty.get(nm);
+      (c.months||[]).forEach(mo=>{
+        if(!byMonth[mo.month]) return;
+        coAdd(byMonth[mo.month],mo.totals);coAdd(bc.months[mo.month],mo.totals);coAdd(bc.total,mo.totals);
+        (mo.ageGroups||[]).forEach(a=>{const ag=(byAge[a.ageGroup]??={});coAdd(ag[mo.month]??=coBlank(),a);});
+      });
+    });
+  });
+  const tot=months.reduce((a,m)=>coAdd(a,byMonth[m]),coBlank());
+  const pc=(a,b)=>b?a/b*100:null, f1=v=>v==null?'—':v.toFixed(1)+'%';
+  // % lines skip months with too few learners (1 learner = 0% or 100%, which reads as a spike)
+  const MIN_COHORT=5, pcm=(m,a,b)=>byMonth[m].registeredUsers>=MIN_COHORT?pc(byMonth[m][a],byMonth[m][b]):null;
+  msg.style.display=tot.registeredUsers?'none':'block';
+  if(!tot.registeredUsers) msg.textContent=`No learners registered between ${ymLabel(from)} and ${ymLabel(to)}.`;
+  const best=months.filter(m=>byMonth[m].registeredUsers>=5).sort((a,b)=>pc(byMonth[b].enrolledUsers,byMonth[b].registeredUsers)-pc(byMonth[a].enrolledUsers,byMonth[a].registeredUsers))[0];
+  const peak=[...months].sort((a,b)=>byMonth[b].registeredUsers-byMonth[a].registeredUsers)[0];
+  kp.innerHTML=[
+    [fmt(tot.registeredUsers),'New learners',`${ymLabel(from)} – ${ymLabel(to)}`],
+    [fmt(tot.enrolledUsers),'Now enrolled',f1(pc(tot.enrolledUsers,tot.registeredUsers))+' of new learners'],
+    [fmt(tot.completedUsers),'Now completed',f1(pc(tot.completedUsers,tot.enrolledUsers))+' of enrolled'],
+    [f1(pc(tot.registeredFemaleUsers,tot.registeredUsers)),'Women (new learners)',f1(pc(tot.completedFemaleUsers,tot.completedUsers))+' of completers'],
+    [peak&&byMonth[peak].registeredUsers?ymLabel(peak):'—','Biggest month',peak?fmt(byMonth[peak].registeredUsers)+' joined':''],
+  ].map(([v,l,i])=>`<div class="kcard"><b>${v}</b><span>${l}</span><i>${i}</i></div>`).join('');
+
+  const labels=months.map(ymLabel);
+  if(CH['co-main']) CH['co-main'].destroy();
+  CH['co-main']=new Chart(readyCanvas('co-main'),{data:{labels,datasets:[
+      {type:'bar',label:'New learners',data:months.map(m=>byMonth[m].registeredUsers),backgroundColor:hexA('#396FB9',.55),borderRadius:3,yAxisID:'y',order:2},
+      {type:'line',label:'Enrolled %',data:months.map(m=>pcm(m,'enrolledUsers','registeredUsers')),borderColor:'#5AADAD',backgroundColor:'#5AADAD',borderWidth:2.5,pointRadius:4,tension:.3,yAxisID:'y1',spanGaps:true,order:1},
+      {type:'line',label:'Completed %',data:months.map(m=>pcm(m,'completedUsers','registeredUsers')),borderColor:'#6D28D9',backgroundColor:'#6D28D9',borderWidth:2.5,pointRadius:4,tension:.3,yAxisID:'y1',spanGaps:true,order:0},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:legendOpts,
+      tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?`${c.dataset.label}: ${c.raw==null?'—':c.raw.toFixed(1)+'%'}`:`${c.dataset.label}: ${fmt(c.raw)}`}}},
+      scales:{x:{...scaleBase()},y:{position:'left',min:0,...scaleBase(),ticks:{...scaleBase().ticks,precision:0},title:{display:true,text:'New learners',color:'#94A3B8',font:{size:9}}},
+        y1:{position:'right',min:0,max:100,...scaleBase(),grid:{drawOnChartArea:false},ticks:{...scaleBase().ticks,callback:v=>v+'%'},title:{display:true,text:'% of cohort',color:'#94A3B8',font:{size:9}}}}}});
+  const conv=months.filter(m=>byMonth[m].registeredUsers>=5);
+  document.getElementById('co-main-i').textContent=best?`Best-converting month: ${ymLabel(best)} (${f1(pc(byMonth[best].enrolledUsers,byMonth[best].registeredUsers))} enrolled).`+(conv.length<months.length?' Months with fewer than 5 new learners are left out of this comparison.':''):'';
+
+  if(CH['co-stage']) CH['co-stage'].destroy();
+  const st=m=>{const b=byMonth[m],r=b.registeredUsers||1;return{never:(b.registeredUsers-b.enrolledUsers)/r*100,stall:(b.enrolledUsers-b.completedUsers)/r*100,done:b.completedUsers/r*100};};
+  CH['co-stage']=new Chart(readyCanvas('co-stage'),{type:'bar',data:{labels,datasets:[
+      {label:'Not enrolled',data:months.map(m=>byMonth[m].registeredUsers?+st(m).never.toFixed(1):0),backgroundColor:hexA('#8B5CF6',.75)},
+      {label:'Enrolled, not completed',data:months.map(m=>byMonth[m].registeredUsers?+st(m).stall.toFixed(1):0),backgroundColor:hexA('#80C5C5',.85)},
+      {label:'Completed',data:months.map(m=>byMonth[m].registeredUsers?+st(m).done.toFixed(1):0),backgroundColor:hexA('#2A9D8F',.85)},
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:legendOpts,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}%`}}},
+      scales:{x:{stacked:true,...scaleBase()},y:{stacked:true,min:0,max:100,...scaleBase(),ticks:{...scaleBase().ticks,callback:v=>v+'%'}}}}});
+
+  if(CH['co-gender']) CH['co-gender'].destroy();
+  const gser=(k,f)=>months.map(m=>pcm(m,f,k));
+  CH['co-gender']=new Chart(readyCanvas('co-gender'),{type:'line',data:{labels,datasets:[
+      {label:'Registered',data:gser('registeredUsers','registeredFemaleUsers'),borderColor:'#396FB9',backgroundColor:'#396FB9',tension:.3,spanGaps:true},
+      {label:'Enrolled',data:gser('enrolledUsers','enrolledFemaleUsers'),borderColor:'#5AADAD',backgroundColor:'#5AADAD',tension:.3,spanGaps:true},
+      {label:'Completed',data:gser('completedUsers','completedFemaleUsers'),borderColor:'#6D28D9',backgroundColor:'#6D28D9',tension:.3,spanGaps:true},
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:legendOpts,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw==null?'—':c.raw.toFixed(1)+'%'} female`}}},
+      scales:{x:{...scaleBase()},y:{min:0,max:100,...scaleBase(),ticks:{...scaleBase().ticks,callback:v=>v+'%'}}}}});
+  document.getElementById('co-gen-i').textContent=tot.registeredUsers
+    ?`Overall: ${f1(pc(tot.registeredFemaleUsers,tot.registeredUsers))} of new learners are women, ${f1(pc(tot.completedFemaleUsers,tot.completedUsers))} of completers.`:'';
+
+  if(CH['co-age']) CH['co-age'].destroy();
+  const ages=AGE_ORDER.filter(a=>byAge[a]).concat(Object.keys(byAge).filter(a=>!AGE_ORDER.includes(a)));
+  CH['co-age']=new Chart(readyCanvas('co-age'),{type:'bar',data:{labels,datasets:ages.map((a,i)=>({label:a,data:months.map(m=>n(byAge[a][m]?.registeredUsers)),backgroundColor:hexA(BC[i%BC.length],.8)}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:legendOpts},scales:{x:{stacked:true,...scaleBase()},y:{stacked:true,min:0,...scaleBase(),ticks:{...scaleBase().ticks,precision:0}}}}});
+
+  const top=[...byCounty.values()].filter(c=>c.total.registeredUsers>0).sort((a,b)=>b.total.registeredUsers-a.total.registeredUsers).slice(0,12);
+  document.getElementById('co-heat').innerHTML=top.length
+    ?`<thead><tr><th>County</th>${months.map(m=>`<th style="text-align:center">${ymLabel(m)}</th>`).join('')}<th style="text-align:center">Total</th></tr></thead><tbody>`+
+      top.map(c=>`<tr><td style="font-size:10px;font-weight:600;white-space:nowrap">${esc(c.name)}</td>`+[...months.map(m=>c.months[m]),c.total].map(b=>{
+        if(!b.registeredUsers) return '<td class="hc"></td>';
+        const e=pc(b.enrolledUsers,b.registeredUsers);
+        return `<td class="hc" style="background:${hexA('#5AADAD',.08+e/100*.55)}">${fmt(b.registeredUsers)}<small>${Math.round(e)}% enr.</small></td>`;
+      }).join('')+'</tr>').join('')+'</tbody>'
+    :'<tbody><tr><td style="color:var(--ink3)">No new learners in this range.</td></tr></tbody>';
+}
 
 // ══════════════════════════════════════════════════════════════
 // ASSESSMENT — /countries/assignment-scores (country + courseId; counties included)
