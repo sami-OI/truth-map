@@ -334,6 +334,16 @@ body.admin #adminbar{display:flex}
 .co-quick{display:flex;gap:2px;background:var(--bg);border:1.5px solid var(--border2);border-radius:6px;padding:2px}
 .co-note{font-size:9.5px;color:var(--ink3)}
 
+/* ADMIN CODE DIALOG (in-page, so no browser "<site> says" header) */
+#pinDlg{position:fixed;inset:0;z-index:5500;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center}
+#pinDlg.on{display:flex}
+.pin-box{background:var(--card);border:1.5px solid var(--border2);border-radius:14px;padding:20px 22px;width:min(340px,90vw);box-shadow:0 12px 40px rgba(15,23,42,.25)}
+.pin-box h3{font-size:14px;margin-bottom:12px;color:var(--ink)}
+#pin-in{width:100%;font-family:var(--fc);font-size:15px;letter-spacing:.2em;padding:9px 12px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--ink);outline:none}
+#pin-in:focus{border-color:var(--blue)}
+#pin-err{min-height:16px;font-size:10.5px;color:var(--mauve-d);margin-top:6px}
+.pin-act{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+
 /* SETTINGS */
 .cfg-act{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .cfg-btn{padding:6px 14px;border-radius:8px;border:1.5px solid var(--border2);background:var(--bg);font-family:var(--fc);font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer}
@@ -818,6 +828,16 @@ body.admin #adminbar{display:flex}
   <div class="mp-foot" id="mp-foot"></div>
 </div>
 
+<!-- ADMIN CODE DIALOG -->
+<div id="pinDlg" role="dialog" aria-modal="true" aria-labelledby="pin-title">
+  <form class="pin-box" id="pin-form" autocomplete="off">
+    <h3 id="pin-title">Enter admin code</h3>
+    <input id="pin-in" type="password" inputmode="numeric" autocomplete="off" aria-label="Admin code">
+    <div id="pin-err" role="alert"></div>
+    <div class="pin-act"><button type="button" class="cfg-btn" id="pin-cancel">Cancel</button><button type="submit" class="cfg-btn pri">OK</button></div>
+  </form>
+</div>
+
 <!-- ADMIN MODE -->
 <div id="adminbar">
   <span>Admin mode · click <b>Hide</b> on any tab, chart, number or section · <b id="ab-count">0</b> hidden<span id="ab-dirty"></span></span>
@@ -919,7 +939,7 @@ const CENTROIDS = {
   'Morocco':[31.8,-7.1],'Mozambique':[-18.7,35.5],'Myanmar':[21.9,96.0],'Nepal':[28.4,84.1],'Netherlands':[52.1,5.3],
   'New Zealand':[-40.9,174.9],'Nigeria':[9.1,8.7],'Pakistan':[30.4,69.3],'Philippines':[12.9,121.8],'Portugal':[39.4,-8.2],
   'Qatar':[25.35,51.18],'Russia':[61.5,105.3],'Rwanda':[-1.9,29.9],'Saudi Arabia':[23.9,45.1],'Sierra Leone':[8.5,-11.8],
-  'Singapore':[1.35,103.8],'Somalia':[5.2,46.2],'South Africa':[-30.6,22.9],'South Korea':[35.9,127.8],'Spain':[40.5,-3.7],'Sweden':[62.2,17.6],
+  'Singapore':[1.35,103.8],'Somalia':[5.2,46.2],'South Africa':[-30.6,22.9],'South Korea':[35.9,127.8],'Spain':[40.5,-3.7],'Ecuador':[-1.8,-78.2],'Finland':[64.0,26.0],'Sweden':[62.2,17.6],
   'Sri Lanka':[7.9,80.8],'Sudan':[12.9,30.2],'S. Sudan':[7.3,30.3],'Tanzania':[-6.4,34.9],'Thailand':[15.9,101.0],
   'Turkey':[39.0,35.2],'Uganda':[1.4,32.3],'United Arab Emirates':[23.4,53.8],'United Kingdom':[54.0,-2.5],
   'United States of America':[39.8,-98.6],'Vietnam':[14.1,108.3],'Zambia':[-13.1,27.8],'Zimbabwe':[-19.0,29.2],
@@ -933,7 +953,7 @@ const ISO3 = {
   'Mexico':'MEX','Morocco':'MAR','Mozambique':'MOZ','Myanmar':'MMR','Nepal':'NPL','Netherlands':'NLD','New Zealand':'NZL',
   'Nigeria':'NGA','Pakistan':'PAK','Philippines':'PHL','Portugal':'PRT','Qatar':'QAT','Russia':'RUS','Rwanda':'RWA',
   'Saudi Arabia':'SAU','Sierra Leone':'SLE','Singapore':'SGP','Somalia':'SOM','South Africa':'ZAF','South Korea':'KOR',
-  'Spain':'ESP','Sweden':'SWE','Sri Lanka':'LKA','Sudan':'SDN','S. Sudan':'SSD','Tanzania':'TZA','Thailand':'THA','Turkey':'TUR','Uganda':'UGA',
+  'Spain':'ESP','Ecuador':'ECU','Finland':'FIN','Sweden':'SWE','Sri Lanka':'LKA','Sudan':'SDN','S. Sudan':'SSD','Tanzania':'TZA','Thailand':'THA','Turkey':'TUR','Uganda':'UGA',
   'United Arab Emirates':'ARE','United Kingdom':'GBR','United States of America':'USA','Vietnam':'VNM','Zambia':'ZMB','Zimbabwe':'ZWE',
 };
 // County names in the API that differ from the boundary file (lowercase → boundary shapeName)
@@ -3317,11 +3337,7 @@ document.addEventListener('click',e=>{
 function toggleAdmin(){
   if(!ADMIN.on){
     if(!CFG.adminPin){toast('Admin mode is off: set DASHBOARD_ADMIN_PIN in .env, then run npm run dashboard:config');return;}
-    if(sessionStorage.getItem('truthmap.admin')!=='1'){
-      const pin=prompt('Admin PIN');
-      if(pin==null) return;
-      if(String(pin).trim()!==String(CFG.adminPin)){toast('Wrong PIN');return;}
-    }
+    if(sessionStorage.getItem('truthmap.admin')!=='1'){ askAdminCode(); return; }   // dialog calls back on success
     try{sessionStorage.setItem('truthmap.admin','1');}catch(e){}
   }else{try{sessionStorage.removeItem('truthmap.admin');}catch(e){}}
   ADMIN.on=!ADMIN.on;
@@ -3330,6 +3346,26 @@ function toggleAdmin(){
   document.getElementById('admbtn').textContent=ADMIN.on?'🔓 Admin':'🔒 Admin';
   applyHidden();
 }
+// In-page admin code dialog (replaces window.prompt, whose header shows the site address)
+function askAdminCode(){
+  const d=document.getElementById('pinDlg'),inp=document.getElementById('pin-in');
+  inp.value='';document.getElementById('pin-err').textContent='';
+  d.classList.add('on');setTimeout(()=>inp.focus(),0);
+}
+function closeAdminCode(){document.getElementById('pinDlg').classList.remove('on');}
+document.getElementById('pin-form').addEventListener('submit',e=>{
+  e.preventDefault();
+  const inp=document.getElementById('pin-in');
+  if(String(inp.value).trim()!==String(CFG.adminPin)){
+    document.getElementById('pin-err').textContent='That code is not right. Try again.';inp.select();return;
+  }
+  closeAdminCode();
+  try{sessionStorage.setItem('truthmap.admin','1');}catch(e){}
+  toggleAdmin();
+});
+document.getElementById('pin-cancel').addEventListener('click',closeAdminCode);
+document.getElementById('pinDlg').addEventListener('click',e=>{if(e.target.id==='pinDlg') closeAdminCode();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('pinDlg').classList.contains('on')) closeAdminCode();});
 function closeHideDlg(){document.getElementById('hidedlg').classList.remove('on');}
 function openHideList(){
   const groups={};

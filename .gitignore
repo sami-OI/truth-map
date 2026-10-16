@@ -22,3 +22,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Internal documents (SOP etc.) are never published
+*.docx
+~$*.docx
