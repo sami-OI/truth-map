@@ -76,6 +76,12 @@ Use version tags, never `@main`: jsDelivr caches branches for a long time.
 | `DASHBOARD_ASSESSMENT_API_BASE` | Only if assessment scores come from a different server |
 | `DASHBOARD_CDN_REPO`, `DASHBOARD_CDN_VERSION` | Repo and release tag the Webflow embed loads |
 
+## Signing in
+
+Without signing in, the map shows public numbers: every organisation added together.
+
+A super admin creates sign-ins in the OIAI Dashboard (the Truth Map menu) and picks the organisations each one can see. **Sign in** at the top of the map then shows only those organisations, with a filter when there is more than one, and only the courses assigned to them. The data API enforces this limit, not the page. Signed-in answers are never stored in the browser or in the proxy's shared cache.
+
 ## Security notes
 
 - Anything the browser receives, including the API key in the Webflow snippet, can be read by visitors. For a public page, have the backend add the key server-side.

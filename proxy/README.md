@@ -68,6 +68,10 @@ Paste the new `handoff/webflow-embed.html` into the Webflow Code Embed and publi
 
 A page opened from a file (`file://`) sends the origin `null`. To test locally through the proxy, temporarily add `null` to `ALLOWED_ORIGINS`, and remove it again afterwards.
 
+## Signing in
+
+Sign-ins and signed-in requests pass through the Worker without being cached, because the cache is shared by everyone. Deploy this Worker version before releasing a dashboard version that has **Sign in**, or sign-in will fail with a CORS error.
+
 ## Limits worth knowing
 
 - The origin check stops **other websites** from using the proxy. A determined person writing their own script can still fake an origin and read the same **aggregate** numbers the dashboard shows. They never get the key, and can only call these five read-only endpoints. If the numbers themselves must be private, put the page behind a login (Webflow page password or Memberships) and have the Worker check that login too.

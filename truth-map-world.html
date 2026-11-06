@@ -341,6 +341,15 @@ body.admin #adminbar{display:flex}
 .pin-box h3{font-size:14px;margin-bottom:12px;color:var(--ink)}
 #pin-in{width:100%;font-family:var(--fc);font-size:15px;letter-spacing:.2em;padding:9px 12px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--ink);outline:none}
 #pin-in:focus{border-color:var(--blue)}
+#signinDlg{position:fixed;inset:0;z-index:5500;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center}
+#signinDlg.on{display:flex}
+.signin-note{font-size:11px;line-height:1.45;color:var(--ink2);margin:-6px 0 12px}
+.signin-lbl{display:block;font-size:10.5px;font-weight:600;color:var(--ink2);margin:0 0 4px}
+.signin-in{width:100%;font-family:var(--fc);font-size:13px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--ink);outline:none;margin-bottom:10px}
+.signin-in:focus{border-color:var(--blue)}
+#signin-err{min-height:16px;font-size:10.5px;color:var(--mauve-d)}
+#orgsel{max-width:200px;padding:4px 8px;border:1.5px solid var(--blue);border-radius:20px;font-family:var(--fc);font-size:10px;font-weight:600;color:var(--blue);background:transparent;cursor:pointer;outline:none}
+.org-chip{max-width:200px;padding:4px 10px;border:1.5px solid var(--blue);border-radius:20px;font-size:10px;font-weight:600;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #pin-err{min-height:16px;font-size:10.5px;color:var(--mauve-d);margin-top:6px}
 .pin-act{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 
@@ -399,6 +408,8 @@ body.admin #adminbar{display:flex}
     <button class="tab" data-tab="assessment" onclick="goTab('assessment',this)">⑨ Assessment</button>
   </div>
   <div class="tr">
+    <span id="org-scope"></span>
+    <button class="ibtn" id="authbtn" onclick="authClick()" style="display:none">Sign in</button>
     <button class="ibtn" id="obtn" onclick="toggleOnto()"><div class="odot"></div>Ontology</button>
     <button class="ibtn" onclick="doRefresh(true)" title="Reload the latest data">↻ Refresh</button>
     <button class="ibtn" id="admbtn" onclick="toggleAdmin()" title="Admin: hide or show tabs, charts and numbers">🔒 Admin</button>
@@ -838,6 +849,19 @@ body.admin #adminbar{display:flex}
   </form>
 </div>
 
+<div id="signinDlg" role="dialog" aria-modal="true" aria-labelledby="signin-title">
+  <form class="pin-box" id="signin-form">
+    <h3 id="signin-title">Sign in to the Truth Map</h3>
+    <p class="signin-note">Signing in shows detail for the organisations assigned to you. Everyone else sees combined public numbers.</p>
+    <label class="signin-lbl" for="signin-username">Username</label>
+    <input class="signin-in" id="signin-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label class="signin-lbl" for="signin-pass">Password</label>
+    <input class="signin-in" id="signin-pass" type="password" autocomplete="current-password" required>
+    <div id="signin-err" role="alert"></div>
+    <div class="pin-act"><button type="button" class="cfg-btn" id="signin-cancel">Cancel</button><button type="submit" class="cfg-btn pri" id="signin-ok">Sign in</button></div>
+  </form>
+</div>
+
 <!-- ADMIN MODE -->
 <div id="adminbar">
   <span>Admin mode · click <b>Hide</b> on any tab, chart, number or section · <b id="ab-count">0</b> hidden<span id="ab-dirty"></span></span>
@@ -894,6 +918,8 @@ const DEFAULT_CONFIG = {
     courseBreakdown:'/countries/course-breakdown',// ?country=
     assignmentScores:'/countries/assignment-scores',// ?country=&courseId= (&county=)
     cohortProgress:'/countries/cohort-progress',  // ?country=&courseId=&from=YYYY-MM&to=YYYY-MM
+    login:'/auth/login',                          // POST {username,password}
+    me:'/me',                                     // who is signed in, and their organisations
   },
 };
 const CFG_STORE='truthmap.apiConfig';
@@ -1083,15 +1109,33 @@ function mockApi(name,params={}){
 // ══════════════════════════════════════════════════════════════
 // API
 // ══════════════════════════════════════════════════════════════
+// ── Sign-in ──
+// Signed out, every call returns all organisations combined. Signed in, the API limits
+// every call to this credential's organisations. The session lasts for this tab only.
+const SESSION_STORE='truthmap.session';
+function readSession(){
+  try{
+    const v=JSON.parse(sessionStorage.getItem(SESSION_STORE)||'null');
+    return v&&v.token&&new Date(v.sessionExpiresAt)>new Date()?v:null;
+  }catch(e){return null;}
+}
+let SESSION=readSession();
+function saveSession(v){
+  try{if(v)sessionStorage.setItem(SESSION_STORE,JSON.stringify(v));else sessionStorage.removeItem(SESSION_STORE);}catch(e){}
+}
 function hdrs(cfg=CFG){
   const h={'Accept':'application/json'};
   if(cfg.apiKey) h[cfg.apiKeyHeader||'api-key']=(cfg.apiKeyPrefix||'')+cfg.apiKey;
+  if(SESSION) h['X-Truth-Map-Token']=SESSION.token;
   return h;
 }
 function apiUrl(name,params={},cfg=CFG){
   const path=cfg.endpoints[name]; if(!path) throw new Error('Unknown endpoint "'+name+'"');
-  const qs=new URLSearchParams(Object.entries(params).filter(([,v])=>v!=null&&v!=='')).toString();
-  const base=String((cfg.endpointBases||{})[name]||cfg.apiBase).replace(/\/+$/,'');
+  const all=SESSION&&SESSION.orgId&&name!=='me'?{...params,orgIds:SESSION.orgId}:params;
+  const qs=new URLSearchParams(Object.entries(all).filter(([,v])=>v!=null&&v!=='')).toString();
+  // Signed in, everything goes to the main API: the sign-in must not reach another server,
+  // and another server couldn't limit its answer to this credential's organisations.
+  const base=String((!SESSION&&(cfg.endpointBases||{})[name])||cfg.apiBase).replace(/\/+$/,'');
   return base+path+(qs?'?'+qs:'');
 }
 // One place for every live call: adds the key header, timeout and readable errors
@@ -1099,11 +1143,16 @@ async function liveFetch(name,params={},cfg=CFG){
   const url=apiUrl(name,params,cfg);
   const ms=(cfg.timeouts||{})[name]||cfg.timeoutMs||12000;
   let r;
-  try{r=await fetch(url,{headers:hdrs(cfg),signal:AbortSignal.timeout(ms)});}
+  // no-store: the browser may hold the public answer for this same address
+  try{r=await fetch(url,{headers:hdrs(cfg),signal:AbortSignal.timeout(ms),...(SESSION?{cache:'no-store'}:{})});}
   catch(e){
     console.warn('[TruthMap] request failed',name,url,e);
     const err=new Error(e.name==='TimeoutError'?'the data service took too long to respond':'could not reach the data service (check your internet connection)');
     err.kind='network';throw err;
+  }
+  if(SESSION&&(r.status===401||r.status===403)){
+    sessionRefused(r.status);
+    const err=new Error('your session has ended');err.kind='auth';err.status=r.status;throw err;
   }
   if(r.status===401||r.status===403){
     console.warn('[TruthMap] access refused',name,url,r.status);
@@ -1124,9 +1173,13 @@ async function liveFetch(name,params={},cfg=CFG){
 // ── Response cache: memory + localStorage, keyed by base URL + endpoint + params ──
 const CACHE_NS='truthmap.cache.v1:';
 const MEM=new Map(),INFLIGHT=new Map();
-const cacheKey=(name,params)=>CACHE_NS+((CFG.endpointBases||{})[name]||CFG.apiBase)+'|'+name+'|'+new URLSearchParams(Object.entries(params||{}).map(([k,v])=>[k,String(v)]).sort()).toString();
+// Signed-in answers are kept in memory only, under their own keys, so they can't outlive
+// the page or be shown to someone signed out on this browser.
+const scopeKey=()=>SESSION?'truthmap.signedin:'+SESSION.username+'|'+(SESSION.orgId||'all')+'|':CACHE_NS+'';
+const cacheKey=(name,params)=>scopeKey()+((CFG.endpointBases||{})[name]||CFG.apiBase)+'|'+name+'|'+new URLSearchParams(Object.entries(params||{}).map(([k,v])=>[k,String(v)]).sort()).toString();
 function cacheGet(k){
   if(MEM.has(k)) return MEM.get(k);
+  if(!k.startsWith(CACHE_NS)) return null;
   try{const v=JSON.parse(localStorage.getItem(k)||'null');if(v){MEM.set(k,v);return v;}}catch(e){}
   return null;
 }
@@ -1138,6 +1191,7 @@ function cacheEvictOldest(){
 }
 function cacheSet(k,data){
   const v={t:Date.now(),data};MEM.set(k,v);
+  if(!k.startsWith(CACHE_NS)) return;
   const raw=JSON.stringify(v);
   try{localStorage.setItem(k,raw);}
   catch(e){cacheEvictOldest();try{localStorage.setItem(k,raw);}catch(e2){/* memory-only */}}
@@ -3366,6 +3420,83 @@ document.getElementById('pin-form').addEventListener('submit',e=>{
 document.getElementById('pin-cancel').addEventListener('click',closeAdminCode);
 document.getElementById('pinDlg').addEventListener('click',e=>{if(e.target.id==='pinDlg') closeAdminCode();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('pinDlg').classList.contains('on')) closeAdminCode();});
+// ── Sign-in dialog and organisation filter ──
+// Signing in or out, or changing the filter, reloads the page: it drops every in-flight
+// request and everything in memory, so one scope's data can't appear under another.
+function endSession(){SESSION=null;saveSession(null);location.reload();}
+function sessionRefused(status){
+  if(status===403&&SESSION.orgId){SESSION.orgId=null;saveSession(SESSION);location.reload();return;}
+  try{sessionStorage.setItem('truthmap.signedOutNote','1');}catch(e){}
+  endSession();
+}
+function authClick(){
+  if(SESSION){endSession();return;}
+  const d=document.getElementById('signinDlg');
+  document.getElementById('signin-err').textContent='';
+  document.getElementById('signin-pass').value='';
+  d.classList.add('on');setTimeout(()=>document.getElementById('signin-username').focus(),0);
+}
+function closeSignIn(){document.getElementById('signinDlg').classList.remove('on');}
+document.getElementById('signin-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const username=document.getElementById('signin-username').value.trim();
+  const passEl=document.getElementById('signin-pass');
+  const errEl=document.getElementById('signin-err');
+  const ok=document.getElementById('signin-ok');
+  errEl.textContent='';ok.disabled=true;
+  try{
+    const r=await fetch(apiUrl('login'),{method:'POST',headers:{...hdrs(),'Content-Type':'application/json'},
+      body:JSON.stringify({username,password:passEl.value}),cache:'no-store',signal:AbortSignal.timeout(CFG.timeoutMs||12000)});
+    if(r.status===401||r.status===400){errEl.textContent='That username and password did not work, or there have been too many attempts. Try again later.';passEl.select();return;}
+    if(!r.ok){errEl.textContent='Sign-in is not available right now. Try again later.';return;}
+    const body=await r.json();
+    saveSession({token:body.token,username:body.username,orgs:body.orgs,sessionExpiresAt:body.sessionExpiresAt,orgId:null});
+    location.reload();
+  }catch(err){
+    console.warn('[TruthMap] sign-in failed',err);
+    errEl.textContent='Could not reach the sign-in service. Check your connection and try again.';
+  }finally{ok.disabled=false;}
+});
+document.getElementById('signin-cancel').addEventListener('click',closeSignIn);
+document.getElementById('signinDlg').addEventListener('click',e=>{if(e.target.id==='signinDlg') closeSignIn();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('signinDlg').classList.contains('on')) closeSignIn();});
+// Picks up organisation changes made in the dashboard since signing in.
+async function refreshSession(){
+  try{
+    const me=await liveFetch('me');
+    SESSION.orgs=me.orgs;
+    if(SESSION.orgId&&!me.orgs.some(o=>o.id===SESSION.orgId)) SESSION.orgId=null;
+    saveSession(SESSION);
+  }catch(e){console.warn('[TruthMap] could not refresh the session',e);}
+}
+// Organisations in a tree, each followed by its children, with their depth.
+function nestedOrgs(orgs){
+  const ids=new Set(orgs.map(o=>o.id)),kids=new Map();
+  orgs.forEach(o=>{const p=ids.has(o.parentOrgId)?o.parentOrgId:null;kids.set(p,[...(kids.get(p)||[]),o]);});
+  const out=[];
+  const walk=(p,d)=>(kids.get(p)||[]).forEach(o=>{out.push({...o,depth:d});walk(o.id,d+1);});
+  walk(null,0);
+  return out;
+}
+function setOrgFilter(v){SESSION.orgId=v?Number(v):null;saveSession(SESSION);location.reload();}
+function renderAuth(){
+  const btn=document.getElementById('authbtn'),scope=document.getElementById('org-scope');
+  // Sample data has nothing to sign in to.
+  btn.style.display=DATA_MODE==='sample'||!CFG.apiBase?'none':'';
+  btn.textContent=SESSION?'Sign out':'Sign in';
+  btn.title=SESSION?'Signed in as '+SESSION.username:'Sign in to see your organisations';
+  if(!SESSION){scope.innerHTML='';return;}
+  const orgs=nestedOrgs(SESSION.orgs||[]);
+  if(orgs.length<2){
+    const name=orgs[0]?orgs[0].name:'No active organisations';
+    scope.innerHTML=`<span class="org-chip" title="${esc(name)}">${esc(name)}</span>`;
+    return;
+  }
+  scope.innerHTML=`<select id="orgsel" aria-label="Organisation" onchange="setOrgFilter(this.value)">
+    <option value="">All my organisations</option>
+    ${orgs.map(o=>`<option value="${o.id}"${o.id===SESSION.orgId?' selected':''}>${'\u00A0\u00A0'.repeat(o.depth)}${esc(o.name)}</option>`).join('')}
+  </select>`;
+}
 function closeHideDlg(){document.getElementById('hidedlg').classList.remove('on');}
 function openHideList(){
   const groups={};
@@ -3406,6 +3537,9 @@ window.addEventListener('load',async function(){
   step('Loading fonts…');
   await document.fonts.load('500 12px Comfortaa').catch(()=>{});
   initMap();
+  if(SESSION) await refreshSession();
+  renderAuth();
+  try{if(sessionStorage.getItem('truthmap.signedOutNote')){sessionStorage.removeItem('truthmap.signedOutNote');showErr('Your session has ended, so you are seeing public numbers. Sign in again to see your organisations.',15000);}}catch(e){}
   step('Fetching countries + world outlines…');
   const [topo,data]=await Promise.allSettled([loadTopo(),loadWorldData()]);
   if(topo.status==='rejected'){console.warn('[TruthMap] outlines:',topo.reason);document.getElementById('map-note').style.display='block';}
