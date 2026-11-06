@@ -20,7 +20,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:clean": "node db-cleaning/clean-country-county.js",
+    "db:handoff": "rm -f handoff/db-cleaning.zip && mkdir -p handoff && zip -rq handoff/db-cleaning.zip db-cleaning -x 'db-cleaning/.env' 'db-cleaning/node_modules/*' 'db-cleaning/dev/*' && echo '✓ handoff/db-cleaning.zip'"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

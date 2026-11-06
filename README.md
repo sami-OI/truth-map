@@ -11,6 +11,8 @@ It opens on a world map. Click a country to see its Truth Map: bubble map, geo m
 | `truth-map-world.html` | The dashboard: one self-contained page |
 | `cdn/truth-map.js` | Build of the dashboard for **jsDelivr + Webflow**. Served from this repo |
 | `scripts/` | Build tools (config, CDN build, hand-off package) |
+| `db-cleaning/` | Script that cleans the country / county fields in the user database ([its README](db-cleaning/README.md)) |
+| `proxy/` | Optional Cloudflare Worker that keeps the API key off the page |
 | `HOSTING.md` | Step-by-step guide to hosting it in Webflow |
 | `assets/` | Logo |
 | `src/`, `test/` | NestJS API (an earlier data service, not used by the dashboard today) |
@@ -43,6 +45,8 @@ open truth-map-world.html   # or double-click it
 | `npm run dashboard:config` | Writes `truth-map-config.js` (local use) from `.env` |
 | `npm run dashboard:cdn` | Builds `cdn/truth-map.js` + `handoff/webflow-embed.html` for Webflow |
 | `npm run dashboard:package` | Zips `index.html` + config + guide into `handoff/truth-map.zip` for static hosting |
+| `npm run db:clean` | Dry run of the database cleaning (add `-- --apply --confirm=<db>` to save) |
+| `npm run db:handoff` | Zips `db-cleaning/` into `handoff/db-cleaning.zip` to send to whoever runs it on production |
 
 ## Releasing a new version
 
@@ -77,3 +81,4 @@ Use version tags, never `@main`: jsDelivr caches branches for a long time.
 - Anything the browser receives, including the API key in the Webflow snippet, can be read by visitors. For a public page, have the backend add the key server-side.
 - Restrict the API's CORS to your Webflow domains.
 - The admin PIN deters casual users only. It is not access control.
+- Never commit database dumps, `pairs.json` or dry-run output: they contain real learner data. They are git-ignored.

@@ -1,0 +1,10 @@
+{
+  "name": "truth-map-db-cleaning",
+  "private": true,
+  "description": "Cleans user.country / county / sub_county / city / other. See README.md.",
+  "scripts": {
+    "dry-run": "node clean-country-county.js",
+    "runs": "node clean-country-county.js --runs"
+  },
+  "dependencies": { "dotenv": "^17.4.2", "pg": "^8.22.0" }
+}

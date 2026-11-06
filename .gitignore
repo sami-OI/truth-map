@@ -26,3 +26,14 @@ Thumbs.db
 # Internal documents (SOP etc.) are never published
 *.docx
 ~$*.docx
+
+# ── Database cleaning: never commit real data ─────────────────────
+# database dumps / backups and run output (db-cleaning/sql/*.sql are the scripts, kept)
+*.dump
+*.backup
+*_before_*.sql
+backups/
+dry-run*.txt
+# exported API data used to seed dev (real learner counts)
+pairs.json
+*.zip
